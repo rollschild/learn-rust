@@ -10,12 +10,20 @@
       let
         overlays = [ (import rust-overlay) ];
         pkgs = import nixpkgs { inherit system overlays; };
+        rustVersion = pkgs.rust-bin.stable.latest.default;
 
       in with pkgs; {
         devShell = mkShell {
           nativeBuildInputs = [ autoPatchelfHook pkg-config ];
-          buildInputs =
-            [ rust-analyzer cargo-edit rustup openssl openssl.dev systemd ];
+          buildInputs = [
+            (rustVersion.override { extensions = [ "rust-src" ]; })
+            rust-analyzer
+            clippy
+            evcxr
+            openssl
+            openssl.dev
+            systemd
+          ];
         };
       });
 }
