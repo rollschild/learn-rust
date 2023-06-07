@@ -21,7 +21,7 @@ fn extract_csv() {
         }
 
         // Vec<_> - infer the type of elements
-        let fields: Vec<_> = record.split(",").map(|field| field.trim()).collect();
+        let fields: Vec<_> = record.split(',').map(|field| field.trim()).collect();
 
         // cfg! checks configuration at compile time
         if cfg!(debug_assertions) {
