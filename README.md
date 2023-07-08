@@ -49,8 +49,7 @@
   - of type `[T;N]`
   - `let arr = ['x'; 5];`
 - **slices** - collection of _similar_ elements with length known at _runtime_
-- `str` - string slice - text with length known at _runtime_
-- string formatting uses `{}` as formatter
+
 - `as` - numeric type conversions
 - constants - ALL_CAP_SNAKE_CASE - **must always** have explicit types
 - `::std::f64::INFINITY`
@@ -61,6 +60,40 @@
 - `()` is a **unit** - returning nothing
   - the `main()` function by default returns `()`
 - `main()` function can also return a `Result`
+
+### `String` vs. `str`
+
+- `str` - string slice - text with length known at _runtime_
+  - cannot be expanded or shrank once created
+  - UTF-8 guaranteed
+  - `&str` - contains reference to `str` data and a length
+  - attempting to assign a variable to `str` will _FAIL_
+  - Rust compiler wants to create fixed-sized variables within a function's stack frame
+  - `str` values can be of arbitrary length - can only be stored as local variables by reference
+- `String` uses dynamic memory allocation
+- Creating `&str` avoids a memory allocation
+- `String` is an **owned** type
+  - read-write
+- `&str` is a **borrowed** type
+  - read-only
+- string literals are `&str`
+  - full type: `&'static str`
+- `char` is _ALWAYS_ **4** bytes
+  - interanally encoded in UCS-4/UTF-32
+  - _ALWAYS_ fixed-length - easier for the compiler
+- `[u8]` - slice of raw bytes
+- `Vec<u8>` - vector of raw bytes
+- `String` <-> `Vec<u8>`
+- `str` <-> `[u8]`
+- string formatting uses `{}` as formatter
+- `std::ffi::OSString` - platform-native string
+  - not guaranteed to be UTF-8
+  - does _NOT_ contain the zero byte `0x00`
+- `std::path::Path` - filesys
+- a backslash `\` escapes the newline character in the string literal
+- `String` is guaranteed to be UTF-8
+  - however reading a text file into `String` may cause errors if there are invalid bytes
+  - Better - read in data as `[u8]` (slice of `u8` values) then decode those bytes
 
 ### Floating-point Numbers
 
@@ -78,6 +111,26 @@
   - _NEVER_ equal to each other
 - use `is_nan()` and `is_finite()`
   - they crash
+
+### Arrays vs. Vectors vs. Slices
+
+- array - fixed size and _extremely_ light weight
+  - although possible to replace items within an array
+  - an array's type: `[T; n]`
+- vector - growable but incurs small runtime penalty
+- In practice, most interactions with arrays occurs via _another type_, **slice**, `[T]`
+  - slice itself is interacted by reference `&[T]`
+- slice - dynamically sized array-like objects
+  - size _not_ known at compile time
+  - _NOT_ resizable
+  - _dynamic typing_
+  - `[T; n]` vs. `[T]`
+  - create a slice from an array - cheap!
+  - can be used as a **view** on arrays (and other slices)
+  - size of slice itself is _FIXED_ in memory: two `usize` components
+    - pointer
+    - length
+  - `&[T]`
 -
 
 ## Functions
@@ -85,6 +138,25 @@
 - use **tuple** to return multiple values from a function
 - to return nothing: `return ();` - `()` is _empty tuple_
 - to print `()`, use `{:?}`
+
+### Advanced Functions
+
+#### Explicit Lifetime Annotations
+
+- `'a`, `'b`, etc
+  - lifetime variables
+- `i: &'a i32` - binds lifetime variable `'a` to the lifetime of `i`
+  - `i` is a reference to an `i32` with lifetime `a`
+- All values bound to a given lifetime must live as long as the last access to any value bound to that lifetime
+
+#### Generics
+
+- **Traits**
+  - `fn add<T: std::ops::Add<Output = T>>(i: T, j: T) -> T {}`
+  - _all_ Rust operations are defined _within_ **traits**
+- _ALL_ Rust operations are systactic sugar for trait's methods
+- During compilation, `a + b` is converted to `a.add(b)`
+-
 
 ## Flow Control
 
@@ -121,6 +193,16 @@
   - safer?
   - does _NOT_ fall through - returns _immediately_ when a match is found
 
-## References
+## Read from CLI
 
+- Use `clap`
+- example usage:
+  - `cargo run -- <arg>`
+  - `./target/debug/<executable> --help`
+
+## Read from Files
+
+- `BufReader`
+  - provides buffered I/O
+  - can reduce system calls to OS if the hard disk is congested
 -

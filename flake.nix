@@ -18,6 +18,7 @@
           buildInputs = [
             (rustVersion.override { extensions = [ "rust-src" ]; })
             rust-analyzer
+            rustup
             clippy
             evcxr
             openssl
