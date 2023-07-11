@@ -276,6 +276,7 @@
 ### `trait`
 
 - Allowing multiple types to implement a certain `trait` enables code reuse and allows the Rust compiler to perform **zero-cost abstraction**
+  - by not adding extra data around values within `strcut`s
 - `println!`, `print!`, `write!`, `writeln!`, `format!`
   - rely on `Display` and `Debug` traits
   - `{}`
@@ -291,3 +292,59 @@
 - `///` or `//!`
 - Use `cargo doc --open` to generate doc for the project _and_ open it in web browser
 - Use `cargo doc --no-deps` to not include dependencies
+
+## Lifetimes, Ownership, and Borrowing
+
+- **move** - movement of **ownership**
+- _Every_ value in Rust is **owned**
+- Types implementing `Copy` trait are duplicated at times that would otherwise be illegal
+- primitive types possess **copy semantics**
+- all other types have **move semantics**
+
+### Owner
+
+- Owner cleans up when its values' lifetimes end
+- `Drop`
+  - to implement custom destructor
+  - `drop(&mut self)`
+- Values _cannot_ outlive their owner
+
+### Best Practices
+
+- Use references where full ownership is not required
+- Duplicate the value
+- Refactor the code to reduce number of long-lived objects
+- Wrap your data in a type designed to assist with movement issues
+
+#### Duplicate the value
+
+- Two modes of duplication: **clone** vs. **copy**, by different traits
+  - `std::clone::Clone`
+  - `std::marker::Copy`
+  - copy is _implicit_ - whenever ownership would otherwise be moved to an inner scope
+    - always fast and cheap
+    - always identical - copies are bit-for-bit duplicates
+  - clone is _explicit_ - `.clone()`
+    - may be _slow_ and _expensive_
+- Why not always `Copy`?
+  - not for non-negligible performance impact
+  - not working perfectly on references
+  - some types overload the `Clone` trait
+- If implementing `Copy` manually, you would _also_ need to implement `Clone`
+
+#### Wrap data within specialty types
+
+- Will incur runtime costs
+- `std::rc::Rc`
+  - `Rc<T>`
+    - **a reference-counted value of type `T`**
+    - provides **shared ownership** of `T`
+    - prevents `T` from being removed from memory until every owner is removed
+    - implements `Clone`
+    - does _NOT_ allow mutation!
+    - to allow mutation, use `Rc<RefCell<T>>`
+      - `let mut mutable_base = <base>.borrow_mut()` - allowing mutation
+    - could be an alternative if implementing `Clone` is _prohibitively_ expensive
+    - _NOT_ thread safe!!!
+    - In multithreaded code, replace with `Arc<T>` and `Arc<Mutex<T>>`
+-
