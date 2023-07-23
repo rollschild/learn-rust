@@ -347,4 +347,167 @@
     - could be an alternative if implementing `Clone` is _prohibitively_ expensive
     - _NOT_ thread safe!!!
     - In multithreaded code, replace with `Arc<T>` and `Arc<Mutex<T>>`
--
+
+## Data in Depth
+
+### Bit Patterns and Types
+
+- Text files are just binary files that happen to follow a _consistent_ mapping between bit strings and characters
+  - **encoding**
+
+```rust
+let a: f32 = 42.42;
+let frankentype: u32 = unsafe {
+  std::mem::transmute(a)
+};
+```
+
+- `{:032b}` - directive for the `println!()` macro
+  - left-pad with 32 zeros
+  - right-hand `b` invokes the `std::fmt::Binary` trait
+- `{}` invokes `std::fmt::Display` trait
+- `{:?}` invokes `std::fmt::Debug` trait
+- `std::mem::transmute()` - naively interpret an `f32` as `u32` without affecting any of the underlying bits
+
+### Life of an Integer
+
+```rust
+#[allow(arithmetic_overflow)]
+
+fn main() {
+  let (a, b) = (200, 200);
+  let c: u8 = a + b;
+  println!("200 + 200 = {}", c);
+}
+```
+
+- code below compiles if specifying the `-O` flag: `rustc -O`
+  - but gives the _wrong_ answer, 144
+
+#### Endianness
+
+- how bytes layout in CPU
+- **Big Endian** - most significant on the left
+- **Little Endian** - most significant on the right
+- Integers are almost certainly stored in **little endian**
+
+### Decimal Numbers
+
+- Each floating-point number is laid out in memory as **scientific notation**
+- Consists of:
+  - sign bit
+  - exponent
+  - mantissa
+  - radix, which is `2`
+- $(-1)^{signbit} \times mantissa \times Radix^{exponent - bias}$
+- allows for both $0$ and $-0$
+- To isolate the sign bit, `>> 31`
+- To isolate the exponent:
+  - `>> 23`
+  - AND mask `& 0xff` to exclude the sign bit
+  - Decode - subtract `127`
+- To isolate mantissa,
+  - `& 0x7fffff`
+  - calculate weight
+
+### Fixed-Point Number Formats
+
+- Useful for representing fractions
+- An option for performing calc on CPUs w/o a floating point unit (FPU)
+  - microcontrollers
+- Loses accuracy, saves _significant_ space
+- \***\*The Q Format\*\*** - fixed-point number format using a single byte
+- Q7
+  - 7 bits available for representing number and 1 bit for sign
+  - `i8`
+- **tuple struct** - struct created from unnamed fields
+  - `struct Q(i8);`
+- `PartialEq` - can be compared using `==`
+- `Eq` - any possible values of the type can be compared against any other possible values of the same type
+- `impl From<T> for U`
+  - `std::convert::From`
+  - `std::convert::TryFrom`
+
+### Generating Random Probabilities from Random Bytes
+
+- Division is a _slow_ operation
+
+### Implementing a CPU
+
+- **CHIP-8**
+
+#### CPU RIA/1 - The Adder
+
+- An **operation** (**op**)
+  - procedures supported natively by the system
+  - **implemented in hardware**
+  - **intrinsic operation**
+- **Register**
+  - containers of data that can be directly accessed by CPU
+  - for CHIP-8, each register is `u8`
+- **opcode** - a number that maps to an operation
+  - on CHIP-8, opcodes include both:
+    - operation
+    - operands' registers
+- Steps to perform _addition_:
+  1. Initialize CPU
+  2. Load `u8` values into **registers**
+  3. Load the addition opcode into `current_operation`
+  4. Perform the addition
+- Emulator:
+  1. Reads the opcode
+  2. Decodes instruction
+  3. Matches decoded instruction to known opcodes
+  4. Dispatches execution of the operation to a specific function
+- How to interpret CHIP-8 codes
+  - `u16` values made up of 4 **nibbles**
+  - **nibble** - half a byte
+  - Each opcode (`u16`) is made up of two bytes:
+    - **high byte**
+    - **low byte**
+  - Each byte is made up of two nibbles
+    - **high nibble**
+    - **low nibble**
+
+```
+                 high byte              low byte
+              \/          \/         \/          \/
+0  x          7           3          E           E
+              ^           ^
+        high nibble   low nibble
+```
+
+#### CPU RIA/2 - The Multiplier
+
+- can execute several instructions in sequence
+- 4K memory
+- opcode of `0x0000` indicates stopping the CPU
+- Limitations:
+  - `position_in_memory` is more formally referred to as **program counter**
+  - CHIP-8 specifications reserves the first 512 bytes (`0x100`) for the system
+- Use the last register as a **carry flag**
+  - an operation has overflowed the `u8` register size
+
+#### CPU RIA/3 - The Caller
+
+- Adds the ability to call functions
+- _NO_ programming language support
+  - _any_ programs still need to be written in binary
+- Support for a **stack** - a specialized memory to store the following addresses:
+  - the **CALL** opcode - `0x2nnn`
+    - `nnn` is the memory address
+    - sets `position_in_memory` to `nnn`, the address of the function
+  - the **RETURN** opcode - `0x00EE`
+    - sets `position_in_memory` to the memory address of the previous CALL opcode
+- Function: a sequence of bytes that can be executed by a CPU
+- `copy_from_slice(&some_slice)`
+- Calling a function:
+  1. Store the current memory location on the stack
+  2. Increment the stack pointer
+  3. Set the current memory location to the intended memory address
+- Returning from a function:
+  1. Decrement the stack pointer
+  2. Retrieve the calling memory address from the stack
+  3. Set the current memory location to the intended memory address
+- `cargo build --release` _disables_ runtime checks
+  - integer overflows/underflows could happen!
