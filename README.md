@@ -511,3 +511,249 @@ fn main() {
   3. Set the current memory location to the intended memory address
 - `cargo build --release` _disables_ runtime checks
   - integer overflows/underflows could happen!
+
+## Memory
+
+### Pointers
+
+- Most commonly referred to as `&T` and `&mut T`
+  - also `Option<T>` - using null pointer optimization to ensure that `Option<T>` occupies 0 bytes in the compiled binary
+  - `None` is represented by a **null pointer** - pointing to invalid memory
+- **address space** - retrieval system to make use of physical RAM
+  - encoded in `usize`
+- pointer vs. Rust's reference
+  - references _always_ refer to valid data
+  - references are correctly aligned to multiple of `usize`
+    - Rust may itself include padding bytes
+  - references are able to provide guarantees above ^ for _dynamically sized types_
+    - for types with no fixed width in memory, Rust ensures that a **length** is kept alongside the internal pointer
+- Three types of pointer types in Rust:
+  - **References**
+  - **Pointers**
+  - **Raw pointers**
+- `Cow` - **copy on write**
+  - handy when an external source provides a buffer
+  - avoids copies - increased runtime performance
+- `ffi` - foreign function interface
+
+#### Raw Pointers in Rust
+
+- **raw pointer** - memory address without Rust's standard guarantees
+  - unsafe
+  - could be null
+- dereferencing _must_ occur in `unsafe` block
+- `*const T`
+- `*mut T`
+- a raw pointer to `String`: `*const String`
+- a raw pointer to `i32`: `*mut i32`
+- Rust references (`&T` and `&mut T`) compile down to raw pointers
+- _always_ point to the starting byte of `T`
+- _always_ know the width of _type_ `T` in bytes
+- Use `std::mem::transmute` to cast a reference to a value as a raw pointer
+  - _highly unsafe_
+- raw pointers do _NOT_ own their values
+  - no compiler checks
+- multiple raw pointers to the same data _are_ allowed
+- Reasons to use raw pointers:
+  - it's _unavoidable_
+  - shared access to something is essential and runtime performance is paramount
+
+#### Rust's pointer ecosystem
+
+- **smart pointers**
+  - _wrap_ raw pointers
+  - with added semantics
+- **fat pointer** - refers to memory layout
+  - **thin pointers**, such as raw ones, are a single `usize` wide
+  - fat pointers are two `usize` wide or more
+- `Box<T>` stores a value on **heap**
+- `Arc<T>` is _thread safe_ but adds _runtime cost_
+- Rust pointer types are _extensible_
+- `core::ptr::Unique` - basis for types such as
+  - `String`
+  - `Box<T>`
+  - `Vec<T>`
+- `core::ptr::Shared` - basis for
+  - `Rc<T>`
+  - `Arc<T>`
+- `std::rc::Weak` & `std::arc::Weak`
+  - for deeply interlinked data structures
+  - for single threaed vs. multi threaded programs
+  - allow access to data within `Rc`/`Arc` without incrementing its reference count
+  - prevents never-ending cycles of pointers
+- `alloc::raw_vec::RawVec`
+  - underlies `Vec<T>` and `VecDeq<T>`
+  - expandable, double-ended queue
+- `std::cell::UnsafeCell`
+  - basis of `Cell<T>` and `RefCell<T>`
+  - for interior mutability
+
+### Allocating Memory
+
+- **stack** vs. **heap**
+  - stack is fast;
+  - heap is slow;
+- To place data on stack, the compiler _must_ know the type's size at _compile time_
+  - in Rust - use types that implement `Sized`
+
+```
+Stack grows downwards with decreasing values
+                      |
+                      |
+                      |
+                      |
+                      |
+                     \/
+
+                      /\
+                      |
+                      |
+                      |
+                      |
+                      |
+Heap grows upwards with increasing values
+```
+
+#### Stack
+
+- **stack frame**, a.k.a. **allocation record**, a.k.a. **activation frame**
+  - created as function calls are made
+  - contains a function's state during the call
+    - arguments
+    - pointer to the original call site
+    - local variables (except for the data allocated on heap)
+  - every stack frame is _different in size_
+  -
+- A cursor within the CPU updates to reflect the current address of the current stack frame
+  - **stack pointer**
+- stack pointer decreases in value as stack grows
+  - functions are called within functions
+- stack pointer increases in value as function returns
+- Stack contains _two_ levels of objects:
+  - stack frames
+  - data
+- stack allows access to _multiple_ elements stored within, _not_ just the top item
+- stack can include elements of _arbitrary_ size
+- `String` vs. `&str`
+  - different representations in memory
+  - `&str` - allocated on **stack**
+  - `String` allocates memory on **heap**
+  - functions only accepting `String` will _not_ work with `&str`
+  - use generics!
+  ```rust
+  /*
+  takes an argument `x` of type `T`, where `T` implements `AsRef<str>`
+  `AsRef<str>` _behaves as_ a reference to `str` _even if it is not_
+  */
+  fn foo<T: AsRef<str>> (x: T) -> bool {
+      x.as_ref().len() > 4
+  }
+  ```
+  - use implicit conversion to read&write - since `&str` is immutable
+  ```rust
+  /*
+  accept _only_ types that can be converted to `String`
+  */
+  fn foo<T: Into<String>>(x: T) -> bool {
+      // performs the conversion within the function
+      // performs any logic to the newly created `String`
+      x.into().len() > 4
+  }
+  ```
+
+#### Heap
+
+- an area of program memory for _types_ that do not have known size at compile time
+- Some types grow/shrink overtime
+  - `String`
+  - `Vec<T>`
+- Some types unable to tell compiler how much memory to allocate even though these do not change size over time
+  - **slices** (`[T]`) - have _NO_ compile time length
+    - internally they are a pointer to some part of an array
+  - **trait object**
+- Variables on the heap _MUST BE_ accessed via a pointer
+  - the `Box<T>` value (e.g. `Box::new(42)`) can _only_ be accessed via a pointer
+- `Box::new(T)` - allocates `T` on the heap
+  - something that has been **boxed** live _on heap_, with a pointer to it _on stack_
+- `std::mem::drop()` deletes the object _before_ its scope ends
+  - types implementing `Drop` has a `drop()` method, _BUT_ it is _ILLEGAL_ to explicitly call it within user code
+  - the boxed value has _NOT_ been deleted from heap,
+  - but the memory allocator has marked that heap location as free for reuse
+- **Dynamic Memory Allocation** - program asks more memory from OS
+  1. request memory from OS via a system call - `alloc()` or `HeapAlloc()`
+  2. use the allocated memory
+  3. release the unneeded memory back to OS via `free()`/`HeapFree()`
+- **Allocator** - the intermediary between program and OS
+- Accessing data on stack is _fast_:
+  - a function's local variables (on stack) reside _next to_ each other in RAM - **contiguous layout**
+  - cache friendly
+- Accessing data on heap is _slow_:
+  - Variables on heap are _unlikely_ to reside next to each other
+  - dereferencing the pointer involves table lookup and trip to main memory
+- Data allocated on stack must stay the _same size_ during the lifetime of the program
+- Memory allocation speed is _NOT_ well-correlated with allocation size
+  - although larger memory allocation _do_ tend to take longer, it is _NOT_ guaranteed
+- To minimize heap allocations:
+  - Use arrays of _uninitialized_ objects
+    - instead of creating objects from scratch as required, create a bulk lot of those with zeroed values
+    - when it's time to activate one of the objects, set its value to non-zero
+    - can be _DANGEROUS_
+  - Use an allocator tuned for the application's access memory profile
+  - Investigate `arena::Arena` and `arena::TypedArena`
+    - able to create objects on the fly
+    - but `alloc()` and `free()` are _only_ called when the arena is created/destroyed
+
+### Virtual Memory
+
+- **Page** - fixed-size block of words in _real_ memory, typically 4KB in size on 64-bit archs
+- **Word** - _any_ type that is size of a pointer
+  - corresponds to width of the CPU's registers
+  - `usize` and `isize` in Rust
+- **Page fault**
+  - error raised by CPU when a valid memory address is requested that is not currently in a physical RAM
+  - signals OS that at least one page must be swapped back into memory
+- **Swapping** - migrating a page of memory stored temporarily on disk from main memory _upon request_
+- **Virtual memory** - OS view of the physical memory available on the system
+- **Page table** - data structure maintained by OS to manage translating virtual -> real memory
+- **Segment** - block within virtual memory
+  - virtual memory is divided into blocks to minimize space required to translate virtual <-> real memory
+- **Segmentation fault** - error raised by CPU when an illegal memory address is requested
+- **MMU** - component of CPU that manages memory address translation
+  - maintains a cache of recently translated addresses (**TLB**)
+- `Box::into_raw()`
+- Accessing data in a program requires **virtual addresses** - the _ONLY_ addresses accessible by the program
+  - translation performed by CPU
+  - instructions stored in OS
+- \***\*Memory Management Unit\*\*** (MMU) - within CPU to perform translation
+  - every virtual address is mapped to a physical address
+  - instructions stored in a pre-defined address in memory
+  - in the worst case, _every_ attempt at accessing memory addresses incurs _two_ memory lookups
+- \***\*Translation Lookaside Buffer\*\*** (TLB)
+  - cache of recently translated addresses, maintained by CPU
+  - has its own (fast) memory
+  - typically around 100 pages on x86 archs
+  - reaching its capacity can be costly
+- virtual addresses are grouped into blocks, **pages**
+  - typically 4KB in size
+  - avoids **memory fragmentation**
+- Having a virtual address space allows OS to _overallocate_
+- Inactive memory **pages** can be **swapped** to disk in a byte-for-byte manner, until it's requested by the active program
+  - often used during high contention for memory
+- **Compression**, among other size optimizations, can be performed
+- Paging can speed up the loading of shared libraries
+- Paging adds security between programs
+  - OS can add other attributes
+
+![ELF - virtual memory space](./memory.svg)
+
+#### Guidelines
+
+- Keep hot working portions of the program within 4KB of size
+- If 4KB is unreasonable, keep under 4KB \* 100
+  - so that CPU can maintain its TLB in good order
+- Avoid deeply nested data structures with pointer spaghetti
+- Test the ordering of nested loops
+
+#### Working with OS
+
+- `kernel.dll` on Windows
